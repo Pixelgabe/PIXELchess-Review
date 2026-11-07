@@ -1,0 +1,425 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-11-06T21:33:15+00:00",
+  "perspective": "white",
+  "conventions": {
+    "eval_perspective": "white",
+    "loss_perspective": "mover",
+    "centipawns_per_pawn": 100,
+    "mate_distance_unit": "moves",
+    "white_mate": "positive = White mates, negative = Black mates, 0 = checkmate",
+    "mover_mate": "positive = mover mates, negative = mover is mated, 0 = mover delivered checkmate",
+    "null": "unavailable or not applicable"
+  },
+  "classification": {
+    "loss_perspective": "mover",
+    "thresholds_cp": {
+      "excellent": {
+        "min_loss": 0,
+        "max_loss": 25
+      },
+      "good": {
+        "min_loss": 26,
+        "max_loss": 50
+      },
+      "inaccuracy": {
+        "min_loss": 51,
+        "max_loss": 100
+      },
+      "mistake": {
+        "min_loss": 101,
+        "max_loss": 200
+      },
+      "blunder": {
+        "min_loss": 201,
+        "max_loss": null
+      }
+    },
+    "rules": {
+      "best": "played the engine's top move (kept separate from the centipawn bands)",
+      "unknown": "either evaluation unavailable",
+      "mate": "mate scores override the centipawn bands",
+      "thresholds": "inclusive centipawn bands, mover-relative"
+    },
+    "labels": {
+      "best": {
+        "label": "Best",
+        "symbol": "★"
+      },
+      "excellent": {
+        "label": "Excellent",
+        "symbol": "!"
+      },
+      "good": {
+        "label": "Good",
+        "symbol": "✓"
+      },
+      "inaccuracy": {
+        "label": "Inaccuracy",
+        "symbol": "?!"
+      },
+      "mistake": {
+        "label": "Mistake",
+        "symbol": "?"
+      },
+      "blunder": {
+        "label": "Blunder",
+        "symbol": "??"
+      },
+      "unknown": {
+        "label": "Unknown",
+        "symbol": "·"
+      }
+    }
+  },
+  "game": {
+    "headers": {
+      "Event": "Fool's Mate",
+      "Site": "?",
+      "Date": "2026.11.06",
+      "Round": "?",
+      "White": "You",
+      "Black": "Stockfish",
+      "Result": "0-1",
+      "Termination": "checkmate"
+    },
+    "result": "0-1",
+    "start_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "final_fen": "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
+    "plies": 4,
+    "full_moves": 2
+  },
+  "analysis": {
+    "engine": "Stockfish",
+    "seconds_per_position": 0.6,
+    "engine_info": {
+      "name": "Stockfish 19",
+      "author": "the Stockfish developers (see AUTHORS file)"
+    },
+    "configuration": {
+      "search_limit": {
+        "time_seconds": 0.6,
+        "depth": null,
+        "nodes": null
+      },
+      "threads": 1,
+      "hash_mb": 16,
+      "options": {
+        "UCI_LimitStrength": false,
+        "Skill Level": 20
+      },
+      "engine_defaults_used": [
+        "Threads",
+        "Hash"
+      ]
+    },
+    "positions_analysed": 5,
+    "positions_expected": 5,
+    "complete": true
+  },
+  "summary": {
+    "moves": 4,
+    "white": {
+      "best": 0,
+      "excellent": 0,
+      "good": 0,
+      "inaccuracy": 0,
+      "mistake": 1,
+      "blunder": 1,
+      "unknown": 0
+    },
+    "black": {
+      "best": 2,
+      "excellent": 0,
+      "good": 0,
+      "inaccuracy": 0,
+      "mistake": 0,
+      "blunder": 0,
+      "unknown": 0
+    },
+    "final_eval": "-#",
+    "final_eval_cp": -100000,
+    "final_score_type": "mate",
+    "final_mate": 0,
+    "biggest_loss": {
+      "ply": 1,
+      "san": "f3",
+      "loss_cp": 112
+    },
+    "biggest_mate_error": {
+      "ply": 3,
+      "san": "g4",
+      "classification": "blunder",
+      "classification_basis": "mate",
+      "mate_transition": "allowed",
+      "before_for_mover": null,
+      "after_for_mover": -1
+    }
+  },
+  "positions": [
+    {
+      "ply": 0,
+      "depth": 22,
+      "seldepth": 35,
+      "nodes": 522053,
+      "nps": 870088,
+      "time_seconds": 0.6,
+      "hashfull_permille": 173,
+      "tbhits": 0,
+      "score": "+0.29",
+      "score_cp": 29,
+      "score_type": "cp",
+      "mate": null,
+      "best_move": "e2e4",
+      "pv": [
+        "e2e4",
+        "c7c5",
+        "g1f3",
+        "d7d6",
+        "d2d4",
+        "c5d4",
+        "f3d4",
+        "g8f6",
+        "b1c3",
+        "a7a6",
+        "c1e3",
+        "e7e5",
+        "d4b3",
+        "c8e6",
+        "d1d2",
+        "f8e7",
+        "f2f3",
+        "h7h5",
+        "c3d5",
+        "f6d5",
+        "e4d5",
+        "e6f5",
+        "f1e2",
+        "a6a5",
+        "a2a4",
+        "e8g8",
+        "e1g1"
+      ],
+      "pv_san": "e4 c5 Nf3 d6 d4 cxd4",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    },
+    {
+      "ply": 1,
+      "depth": 19,
+      "seldepth": 33,
+      "nodes": 526451,
+      "nps": 877418,
+      "time_seconds": 0.6,
+      "hashfull_permille": 199,
+      "tbhits": 0,
+      "score": "-0.83",
+      "score_cp": -83,
+      "score_type": "cp",
+      "mate": null,
+      "best_move": "e7e5",
+      "pv": [
+        "e7e5",
+        "e2e3"
+      ],
+      "pv_san": "e5 e3",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1"
+    },
+    {
+      "ply": 2,
+      "depth": 19,
+      "seldepth": 35,
+      "nodes": 524313,
+      "nps": 873855,
+      "time_seconds": 0.6,
+      "hashfull_permille": 196,
+      "tbhits": 0,
+      "score": "-0.75",
+      "score_cp": -75,
+      "score_type": "cp",
+      "mate": null,
+      "best_move": "b1c3",
+      "pv": [
+        "b1c3",
+        "g8f6"
+      ],
+      "pv_san": "Nc3 Nf6",
+      "fen": "rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2"
+    },
+    {
+      "ply": 3,
+      "depth": 245,
+      "seldepth": 2,
+      "nodes": 7351,
+      "nps": 2450333,
+      "time_seconds": 0.003,
+      "hashfull_permille": 0,
+      "tbhits": 0,
+      "score": "-M1",
+      "score_cp": -99000,
+      "score_type": "mate",
+      "mate": -1,
+      "best_move": "d8h4",
+      "pv": [
+        "d8h4"
+      ],
+      "pv_san": "Qh4#",
+      "fen": "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2"
+    },
+    {
+      "ply": 4,
+      "depth": 0,
+      "seldepth": null,
+      "nodes": null,
+      "nps": null,
+      "time_seconds": null,
+      "hashfull_permille": null,
+      "tbhits": null,
+      "score": "-#",
+      "score_cp": -100000,
+      "score_type": "mate",
+      "mate": 0,
+      "best_move": null,
+      "pv": [],
+      "pv_san": "",
+      "fen": "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"
+    }
+  ],
+  "moves": [
+    {
+      "ply": 1,
+      "move_number": 1,
+      "color": "white",
+      "san": "f3",
+      "uci": "f2f3",
+      "fen_before": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "fen_after": "rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1",
+      "classification": "mistake",
+      "label": "Mistake",
+      "loss_cp": 112,
+      "loss_kind": "centipawn",
+      "classification_basis": "centipawn",
+      "mate": null,
+      "eval_before": {
+        "score": "+0.29",
+        "score_cp": 29,
+        "score_type": "cp",
+        "mate": null
+      },
+      "eval_after": {
+        "score": "-0.83",
+        "score_cp": -83,
+        "score_type": "cp",
+        "mate": null
+      },
+      "best_move": "e2e4",
+      "best_san": "e4",
+      "pv_before": "e4 c5 Nf3 d6 d4 cxd4",
+      "reply_pv": "e5 e3"
+    },
+    {
+      "ply": 2,
+      "move_number": 1,
+      "color": "black",
+      "san": "e5",
+      "uci": "e7e5",
+      "fen_before": "rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1",
+      "fen_after": "rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2",
+      "classification": "best",
+      "label": "Best",
+      "loss_cp": 8,
+      "loss_kind": "centipawn",
+      "classification_basis": "best_move",
+      "mate": null,
+      "eval_before": {
+        "score": "-0.83",
+        "score_cp": -83,
+        "score_type": "cp",
+        "mate": null
+      },
+      "eval_after": {
+        "score": "-0.75",
+        "score_cp": -75,
+        "score_type": "cp",
+        "mate": null
+      },
+      "best_move": "e7e5",
+      "best_san": "e5",
+      "pv_before": "e5 e3",
+      "reply_pv": "Nc3 Nf6"
+    },
+    {
+      "ply": 3,
+      "move_number": 2,
+      "color": "white",
+      "san": "g4",
+      "uci": "g2g4",
+      "fen_before": "rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2",
+      "fen_after": "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2",
+      "classification": "blunder",
+      "label": "Blunder",
+      "loss_cp": null,
+      "loss_kind": "mate",
+      "classification_basis": "mate",
+      "mate": {
+        "before_for_mover": null,
+        "after_for_mover": -1,
+        "transition": "allowed",
+        "allows_forced_mate": true,
+        "misses_forced_mate": false
+      },
+      "eval_before": {
+        "score": "-0.75",
+        "score_cp": -75,
+        "score_type": "cp",
+        "mate": null
+      },
+      "eval_after": {
+        "score": "-M1",
+        "score_cp": -99000,
+        "score_type": "mate",
+        "mate": -1
+      },
+      "best_move": "b1c3",
+      "best_san": "Nc3",
+      "pv_before": "Nc3 Nf6",
+      "reply_pv": "Qh4#"
+    },
+    {
+      "ply": 4,
+      "move_number": 2,
+      "color": "black",
+      "san": "Qh4#",
+      "uci": "d8h4",
+      "fen_before": "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2",
+      "fen_after": "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3",
+      "classification": "best",
+      "label": "Best",
+      "loss_cp": 0,
+      "loss_kind": "mate",
+      "classification_basis": "mate",
+      "mate": {
+        "before_for_mover": 1,
+        "after_for_mover": 0,
+        "transition": "delivered_checkmate",
+        "allows_forced_mate": false,
+        "misses_forced_mate": false
+      },
+      "eval_before": {
+        "score": "-M1",
+        "score_cp": -99000,
+        "score_type": "mate",
+        "mate": -1
+      },
+      "eval_after": {
+        "score": "-#",
+        "score_cp": -100000,
+        "score_type": "mate",
+        "mate": 0
+      },
+      "best_move": "d8h4",
+      "best_san": "Qh4#",
+      "pv_before": "Qh4#",
+      "reply_pv": ""
+    }
+  ]
+}

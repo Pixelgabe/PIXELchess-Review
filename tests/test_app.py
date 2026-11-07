@@ -6,11 +6,23 @@ import shutil
 import chess
 import pytest
 
+from hyprchess import analysis
 from hyprchess.app import ChessApp
 from hyprchess.board import TIERS, BoardView
 from hyprchess.game import Game, TimeControl
 from hyprchess.game_screen import GameScreen
-from hyprchess.screens import FormScreen, HelpScreen, HostScreen, JoinScreen, MenuScreen, TitleScreen
+from hyprchess.screens import (
+    FormScreen,
+    GameListScreen,
+    HelpScreen,
+    HostScreen,
+    JoinScreen,
+    MenuScreen,
+    PgnPickerScreen,
+    ResultScreen,
+    ReviewScreen,
+    TitleScreen,
+)
 from textual.widgets import OptionList
 
 needs_engine = pytest.mark.skipif(not shutil.which("stockfish"), reason="stockfish not installed")
@@ -106,18 +118,25 @@ def test_local_game_with_clock_promotion_picker_resume_and_save(isolated_home):
             resumed = app.screen
             assert isinstance(resumed, GameScreen) and resumed is not screen
             assert resumed.game.board.fen() == screen.game.board.fen() and resumed.game.clock is not None
-            # saved game opens in the viewer and cannot be changed
+            # saved game opens in the read-only review screen
             await pilot.press("b")
             await pilot.pause()
             await choose(pilot, app, "pgn")
+            await until(pilot, lambda: isinstance(app.screen, MenuScreen))
+            await choose(pilot, app, "saved")
+            await until(pilot, lambda: isinstance(app.screen, MenuScreen))
+            app.screen.query_one(OptionList).highlighted = 0
             await pilot.press("enter")
-            await pilot.pause()
+            await until(pilot, lambda: isinstance(app.screen, ReviewScreen))
             viewer = app.screen
-            assert isinstance(viewer, GameScreen) and viewer.mode == "viewer" and viewer.view == 0
+            assert isinstance(viewer, ReviewScreen) and viewer.view == 0
             await pilot.press("full_stop", "full_stop")
+            await pilot.pause()
             assert viewer.view == 2 and viewer.shown.fen() == viewer.game.at(2).fen()
-            move(viewer, "a8b6")
-            assert len(viewer.game.board.move_stack) == 9
+            moves_before = len(viewer.game.board.move_stack)
+            assert not viewer.can_move
+            await pilot.press("enter", "space", "u")
+            assert len(viewer.game.board.move_stack) == moves_before
 
     run(main())
 
@@ -297,5 +316,528 @@ def test_second_engine_from_engines_folder_is_offered_and_remembered(isolated_ho
             await until(pilot, lambda: len(screen.game.board.move_stack) == 2 and not screen.thinking)
             assert app.load_state()["engine"] == "Stockfish"
         assert ChessApp().config["setup"]["opponent"] == "Stockfish"
+
+    run(main())
+
+
+def test_pgn_picker_lists_and_selects_a_file(tmp_path):
+    from textual.widgets import Input
+
+    async def main():
+        pgn = tmp_path / "sample.pgn"
+        pgn.write_text('[Event "Picker"]\n[White "A"]\n[Black "B"]\n1. e4 *\n')
+        (tmp_path / "sub").mkdir()
+        app = ChessApp()
+        async with app.run_test(size=(100, 38)) as pilot:
+            result = []
+            app.push_screen(PgnPickerScreen(str(tmp_path)), result.append)
+            await pilot.pause()
+            listing = app.screen.query_one("#dirlist", OptionList)
+            prompts = [str(option.prompt) for option in listing.options]
+            assert any("📁 sub" in prompt for prompt in prompts)
+            assert any("📄 sample.pgn" in prompt for prompt in prompts)
+            app.screen.query_one(Input).focus()
+            app.screen.query_one(Input).value = str(pgn)
+            await pilot.press("enter")
+            await pilot.pause()
+            assert result == [str(pgn)]
+
+    run(main())
+
+
+def test_pgn_picker_navigates_with_arrows_and_relative_paths(tmp_path):
+    from textual.widgets import Input
+
+    async def main():
+        pgn = tmp_path / "sample.pgn"
+        pgn.write_text('[Event "Picker"]\n[White "A"]\n[Black "B"]\n1. e4 *\n')
+        (tmp_path / "sub").mkdir()
+        app = ChessApp()
+        async with app.run_test(size=(100, 38)) as pilot:
+            result = []
+            app.push_screen(PgnPickerScreen(str(tmp_path)), result.append)
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, PgnPickerScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query(OptionList)),
+            )
+            picker = app.screen
+            listing = picker.query_one("#dirlist", OptionList)
+            prompts = [str(option.prompt) for option in listing.options]
+            first_dir = next(i for i, prompt in enumerate(prompts) if "📁 sub" in prompt)
+
+            # Move down to "sub" and open it.
+            while listing.highlighted != first_dir:
+                await pilot.press("down")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert picker.path == str(tmp_path / "sub")
+
+            # The parent entry takes us back.
+            await pilot.press("home")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert picker.path == str(tmp_path)
+
+            # A relative path is resolved against the folder being shown.
+            field = picker.query_one(Input)
+            field.focus()
+            field.value = "sample.pgn"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert result == [str(pgn)]
+
+    run(main())
+
+
+def test_review_screen_is_read_only_and_reports_missing_engine(tmp_path):
+    from textual.widgets import Static
+
+    async def main():
+        game = Game()
+        for uci in ("e2e4", "e7e5", "g1f3"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        app.engines, app.engine_name, app.engine = {}, None, None
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Review"}, len(game.board.move_stack)))
+            await until(pilot, lambda: isinstance(app.screen, ReviewScreen) and app.screen.engine_error)
+            screen = app.screen
+            assert not screen.can_move and screen.view == 0
+            assert "Engine unavailable" in str(screen.query_one("#eval-text", Static).render())
+            await pilot.press("full_stop", "full_stop")
+            assert screen.view == 2 and screen.shown.fen() == game.at(2).fen()
+            moves = len(screen.game.board.move_stack)
+            await pilot.press("enter", "space", "u")
+            assert len(screen.game.board.move_stack) == moves
+            import json
+
+            path = screen.export_analysis(tmp_path / "analysis.json")
+            data = json.loads(path.read_text())
+            assert data["schema_version"] == 2
+            assert data["analysis"]["complete"] is False
+            assert data["analysis"]["engine_info"] is None
+            assert data["analysis"]["configuration"] is None
+            assert data["game"]["plies"] == 3
+
+    run(main())
+
+
+def test_review_board_opens_from_the_side_the_user_played():
+    game = Game()
+    assert ReviewScreen(game, {"White": "You", "Black": "Stockfish"}, 0).flipped is False
+    assert ReviewScreen(game, {"White": "Stockfish", "Black": "You"}, 0).flipped is True
+    # Imported or local PGNs that do not identify "You" stay White.
+    assert ReviewScreen(Game(), {"Event": "Imported"}, 0).flipped is False
+    assert ReviewScreen(Game(), {"White": "You", "Black": "You"}, 0).flipped is False
+
+
+def test_review_infers_imported_account_from_local_login(monkeypatch):
+    monkeypatch.setattr("hyprchess.screens.getpass.getuser", lambda: "pixelgabe")
+    game = Game()
+    # Chess.com exports use account names, not "You".
+    assert ReviewScreen(game, {"White": "kot28914", "Black": "pixelgabe1"}, 0).flipped is True
+    assert ReviewScreen(game, {"White": "pixelgabe1", "Black": "kot28914"}, 0).flipped is False
+    # An exact login name is recognised too.
+    assert ReviewScreen(game, {"White": "pixelgabe", "Black": "someone"}, 0).flipped is False
+    # Ambiguous or unrelated names keep the default White orientation.
+    assert ReviewScreen(game, {"White": "pixelgabe1", "Black": "pixelgabe2"}, 0).flipped is False
+    assert ReviewScreen(game, {"White": "someone", "Black": "someoneelse"}, 0).flipped is False
+
+
+def test_move_animation_path_hops_through_intermediate_squares():
+    from hyprchess.animation import move_path
+
+    assert move_path(chess.E2, chess.E4) == [chess.E2, chess.E3, chess.E4]
+    assert move_path(chess.H1, chess.H4) == [chess.H1, chess.H2, chess.H3, chess.H4]
+    long_path = move_path(chess.A1, chess.H8)
+    assert len(long_path) <= 5 and long_path[-1] == chess.H8
+
+
+def test_castling_move_animates_king_and_rook():
+    from hyprchess import animation
+    from hyprchess.game import Game
+
+    game = Game()
+    for uci in ("e2e4", "g1f3", "f1c4"):
+        game.push(chess.Move.from_uci(uci))
+    before = game.board.copy(stack=False)
+    castle = chess.Move.from_uci("e1g1")
+    game.push(castle)
+    segments = animation.animation_segments(castle, before)
+    assert len(segments) == 2
+    assert segments[0][0].piece_type == chess.KING
+    assert segments[0][2] == castle.to_square
+    assert segments[1][0].piece_type == chess.ROOK
+
+
+@needs_engine
+def test_review_screen_analyses_every_move_and_labels_them(tmp_path):
+    from textual.widgets import Static
+
+    async def main():
+        game = Game()
+        for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        async with app.run_test(size=(130, 46)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Fool's mate"}, 4))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, ReviewScreen)
+                and not app.screen.analysing
+                and app.screen.scan_done == app.screen.scan_total,
+            )
+            screen = app.screen
+            assert set(screen.evals) == {0, 1, 2, 3, 4}
+            assert set(screen.reports) == {1, 2, 3, 4}
+            assert screen.reports[4].classification.label == "Best"
+            listing = str(screen.query_one("#move-list", Static).render())
+            assert "Qh4#" in listing and "??" in listing
+            screen.view = 3
+            screen._refresh()
+            assert screen.query_one(BoardView)._bg(chess.G4) == analysis.BLUNDER.color
+            import json
+
+            path = screen.export_analysis(tmp_path / "analysis.json")
+            data = json.loads(path.read_text())
+            assert data["analysis"]["complete"] is True
+            assert data["analysis"]["engine_info"]["name"]
+            config = data["analysis"]["configuration"]
+            assert config["search_limit"]["time_seconds"] > 0
+            assert config["threads"] is not None and config["hash_mb"] is not None
+            assert len(data["moves"]) == 4
+            assert data["moves"][-1]["san"] == "Qh4#"
+            assert data["moves"][-1]["label"] == "Best"
+            assert data["moves"][-1]["mate"]["transition"] == "delivered_checkmate"
+            assert data["summary"]["final_score_type"] == "mate"
+            assert data["positions"][-1]["fen"] == game.board.fen()
+
+    run(main())
+
+
+def test_checkmate_names_winner_and_loser_and_marks_king_red():
+    async def main():
+        game = Game()
+        for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(GameScreen(game, "local"))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, GameScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query(BoardView)),
+            )
+            screen = app.screen
+            board = screen.query_one(BoardView)
+            assert screen.shown.is_checkmate()
+            assert board._bg(chess.E1) == app.skin.checkmate
+            screen._changed()
+            await until(pilot, lambda: isinstance(app.screen, MenuScreen))
+            dialog = app.screen
+            assert dialog.heading == "Checkmate — Black wins"
+            assert "White is checkmated" in dialog.body and "Black wins" in dialog.body
+
+    run(main())
+
+
+def test_review_checkmate_shows_result_card_and_marks_king_red():
+    from textual.widgets import Static
+
+    async def main():
+        game = Game()
+        for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        app.engines, app.engine_name, app.engine = {}, None, None
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Fool's mate", "Result": "0-1"}, 4))
+            await until(pilot, lambda: isinstance(app.screen, ReviewScreen))
+            review = app.screen
+            await pilot.press("end")
+            await until(pilot, lambda: isinstance(app.screen, ResultScreen))
+            card = app.screen
+            assert card.heading == "Checkmate"
+            assert "Black wins" in card.body and "White is checkmated" in card.body
+            assert review.shown.is_checkmate()
+            assert review.query_one(BoardView)._bg(chess.E1) == app.skin.checkmate
+            info = str(review.query_one("#game-info", Static).render())
+            assert "Checkmate" in info and "Black wins" in info
+
+    run(main())
+
+
+def test_checkmate_against_the_player_says_you_lose():
+    async def main():
+        game = Game()
+        for uci in ("f2f3", "e7e5", "g2g4", "d8h4"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(GameScreen(game, "engine", human=chess.WHITE))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, GameScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query(BoardView)),
+            )
+            app.screen._changed()
+            await until(pilot, lambda: isinstance(app.screen, MenuScreen))
+            dialog = app.screen
+            assert dialog.heading == "Checkmate — You lose"
+            assert "You are checkmated" in dialog.body and "wins" in dialog.body
+
+    run(main())
+
+
+def test_pgn_picker_mouse_click_selects_a_file(tmp_path):
+    async def main():
+        pgn = tmp_path / "sample.pgn"
+        pgn.write_text('[Event "Picker"]\n[White "A"]\n[Black "B"]\n1. e4 *\n')
+        (tmp_path / "sub").mkdir()
+        app = ChessApp()
+        async with app.run_test(size=(100, 38)) as pilot:
+            result = []
+            app.push_screen(PgnPickerScreen(str(tmp_path)), result.append)
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, PgnPickerScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query(OptionList)),
+            )
+            picker = app.screen
+            listing = picker.query_one("#dirlist", OptionList)
+            prompts = [str(option.prompt) for option in listing.options]
+            row = next(i for i, prompt in enumerate(prompts) if "📄 sample.pgn" in prompt)
+            await pilot.click(listing, offset=(2, row))
+            await pilot.pause()
+            assert result == [str(pgn)]
+
+    run(main())
+
+
+def test_review_multi_game_pgn_lists_games_and_opens_selection(tmp_path):
+    from textual.widgets import Input
+
+    async def main():
+        pgn = tmp_path / "multi.pgn"
+        pgn.write_text(
+            '[Event "One"]\n[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n'
+            "1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0\n\n"
+            '[Event "Two"]\n[White "C"]\n[Black "D"]\n[Result "0-1"]\n\n'
+            "1. f3 e5 2. g4 Qh4# 0-1\n"
+        )
+        app = ChessApp()
+        async with app.run_test(size=(120, 44)) as pilot:
+            await choose(pilot, app, "pgn")
+            await until(pilot, lambda: isinstance(app.screen, MenuScreen))
+            await choose(pilot, app, "browse")
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, PgnPickerScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query(Input)),
+            )
+            field = app.screen.query_one(Input)
+            field.focus()
+            field.value = str(pgn)
+            await pilot.press("enter")
+            await until(pilot, lambda: isinstance(app.screen, GameListScreen))
+            listing = app.screen.query_one(OptionList)
+            assert len(listing.options) == 2
+            listing.highlighted = 1
+            await pilot.press("enter")
+            await until(pilot, lambda: isinstance(app.screen, ReviewScreen))
+            review = app.screen
+            assert review.headers["Event"] == "Two"
+            assert len(review.game.board.move_stack) == 4
+
+    run(main())
+
+
+def test_review_eval_bar_stays_beside_board_and_full_height_when_stacked():
+    from textual.widgets import Static
+
+    async def main():
+        game = Game()
+        for uci in ("e2e4", "e7e5"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        app.engines, app.engine_name, app.engine = {}, None, None
+        async with app.run_test(size=(90, 40)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Layout"}, 2))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, ReviewScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query(BoardView))
+                and bool(app.screen.query("#evalbar")),
+            )
+            screen = app.screen
+            screen._layout()
+            await pilot.pause()
+            board = screen.query_one(BoardView)
+            bar = screen.query_one("#evalbar", Static)
+            assert screen.stacked
+            assert bar.display
+            assert bar.region.x == board.region.x + board.region.width
+            assert bar.region.height == board.region.height
+
+    run(main())
+
+
+def test_review_move_classification_tints_destination_square():
+    async def main():
+        game = Game()
+        game.push(chess.Move.from_uci("e2e4"))
+        app = ChessApp()
+        app.engines, app.engine_name, app.engine = {}, None, None
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Colours"}, 1))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, ReviewScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query(BoardView)),
+            )
+            review = app.screen
+            review.view = 1
+            board = review.query_one(BoardView)
+            for classification in (
+                analysis.BEST,
+                analysis.EXCELLENT,
+                analysis.GOOD,
+                analysis.INACCURACY,
+                analysis.MISTAKE,
+                analysis.BLUNDER,
+            ):
+                review.reports[1] = analysis.MoveReport(
+                    1, "e4", chess.WHITE, classification, 0, None
+                )
+                review._refresh()
+                assert review.move_highlight == chess.E4
+                assert board._bg(chess.E4) == classification.color
+
+            review.reports[1] = analysis.MoveReport(1, "e4", chess.WHITE, analysis.UNKNOWN, None, None)
+            review._refresh()
+            assert review.move_highlight is None
+
+    run(main())
+
+
+def test_review_move_rows_are_compact_and_totals_are_listed():
+    from textual.widgets import Static
+
+    async def main():
+        game = Game()
+        for uci in ("e2e4", "e7e5", "g1f3"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        app.engines, app.engine_name, app.engine = {}, None, None
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Totals"}, 3))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, ReviewScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query("#move-list")),
+            )
+            review = app.screen
+            review.reports = {
+                1: analysis.MoveReport(1, "e4", chess.WHITE, analysis.BEST, 0, None),
+                2: analysis.MoveReport(2, "e5", chess.BLACK, analysis.BLUNDER, 350, None),
+            }
+            review._refresh()
+
+            lines = str(review.query_one("#move-list", Static).render()).splitlines()
+            assert len(lines) == 2
+            assert lines[0].startswith("  1.")
+            assert "e4" in lines[0] and "★" in lines[0]
+            assert "e5" in lines[0] and "??" in lines[0]
+            assert lines[1].startswith("  2.") and "Nf3" in lines[1]
+
+            summary = str(review.query_one("#move-summary", Static).render())
+            assert "Totals" in summary
+            assert "Best 1" in summary and "Blunder 1" in summary
+            assert "Good 0" in summary and "Mistake 0" in summary
+
+    run(main())
+
+
+def test_review_move_badge_is_a_three_row_block_banner():
+    from textual.widgets import Static
+
+    async def main():
+        game = Game()
+        for uci in ("e2e4", "e7e5"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        app.engines, app.engine_name, app.engine = {}, None, None
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Badge"}, 2))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, ReviewScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query("#move-badge")),
+            )
+            review = app.screen
+            review.view = 1
+            review.reports[1] = analysis.MoveReport(1, "e4", chess.WHITE, analysis.BLUNDER, 350, None)
+            review._refresh()
+
+            badge = review.query_one("#move-badge", Static)
+            assert badge.display
+            rows = str(badge.render()).splitlines()
+            assert len(rows) == 3
+            assert all(rows)
+            assert "█" in "".join(rows)
+
+            review.view = 0
+            review._refresh()
+            assert not badge.display
+
+    run(main())
+
+
+def test_review_move_list_click_jumps_to_that_ply():
+    from hyprchess.screens import MOVE_LIST_BLACK_X, MoveList
+
+    async def main():
+        game = Game()
+        for uci in ("e2e4", "e7e5", "g1f3", "b8c6"):
+            game.push(chess.Move.from_uci(uci))
+        app = ChessApp()
+        app.engines, app.engine_name, app.engine = {}, None, None
+        async with app.run_test(size=(120, 44)) as pilot:
+            app.push_screen(ReviewScreen(game, {"Event": "Click"}, 4))
+            await until(
+                pilot,
+                lambda: isinstance(app.screen, ReviewScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query("#move-list")),
+            )
+            review = app.screen
+            await pilot.pause()
+            listing = review.query_one("#move-list", MoveList)
+
+            assert await pilot.click(listing, offset=(0, 0))
+            await pilot.pause()
+            assert review.view == 1
+
+            assert await pilot.click(listing, offset=(MOVE_LIST_BLACK_X + 1, 0))
+            await pilot.pause()
+            assert review.view == 2
+
+            assert await pilot.click(listing, offset=(0, 1))
+            await pilot.pause()
+            assert review.view == 3
+
+            assert await pilot.click(listing, offset=(MOVE_LIST_BLACK_X + 1, 1))
+            await pilot.pause()
+            assert review.view == 4
 
     run(main())

@@ -141,7 +141,7 @@ and press Enter.
 | **Online: host a game** | Wait for a friend to connect to you. |
 | **Online: join a game** | Connect to a friend who is hosting. |
 | **Resume last game** | Carry on the unfinished game against the engine or a local opponent. |
-| **Open a saved game** | Replay a game you saved, move by move. |
+| **Review a game** | Open a saved game or a PGN file, step through it, and analyse it with the engine. |
 | **Skin** | Left and right change the look of the board and pieces. |
 
 ### Setting up a game
@@ -190,7 +190,12 @@ remembered for next time.
   to, including castling and en passant squares. Illegal moves are simply not
   offered.
 - **Highlights.** The last move, the cursor, the selected piece and a king in
-  check each have their own colour.
+  check each have their own colour. A checkmated king's square turns a stronger
+  red than an ordinary check.
+- **Animation.** A move briefly hops the moving piece through its intermediate
+  squares before the board redraws, so a fast move is easier to follow. The
+  animation is short (a few frames) and only happens in live play, not while
+  stepping through a game.
 - **Promotion.** A pawn reaching the last rank asks what it should become.
 
 <p align="center">
@@ -203,6 +208,9 @@ remembered for next time.
 - **Undo and redo.** `u` takes back your last move (and the engine's reply);
   `r` puts it back. Playing a new move clears the redo history.
 - **Flip.** `f` turns the board around.
+- **Sound.** `m` toggles retro move sounds (`move`, `capture`, `check` or
+  `mate`). The sounds are generated locally as chiptune square waves; no
+  Python audio dependency is used.
 
 ## The side panel
 
@@ -227,6 +235,104 @@ jump to the start and back to the live position. The board shows the earlier
 position and the notation highlights where you are. You cannot move pieces
 while looking at an earlier position.
 
+### Review and analysis
+
+**Review a game** on the title screen opens a saved game or a PGN file in a
+read-only review screen. The app analyses every position in the background with
+the configured engine (Stockfish by default) and fills in the evaluation bar
+and move list as it goes. Press `a` to start or stop the analysis.
+
+When browsing for a PGN file, the folder list is navigable: arrow keys move,
+`Enter` opens a folder or selects a `.pgn`, and clicking does the same. `Tab`
+switches between the list and the path field; in the path field you can type a
+folder or file path and press `Enter`, and relative paths are resolved from the
+folder on screen. `Esc` cancels.
+
+Stepping to the final position of a game that ended in checkmate shows a
+winner/loser card, and the panel names the winner and loser. The checkmated
+king's square is drawn in red.
+
+- The vertical eval bar runs down the right-hand side of the board at the full
+  height of the board, including on narrow terminals where the side panel moves
+  below it. The white portion grows as White's advantage grows. The panel says
+  who is better and by how much, for example `White +0.35`, `Black +1.20`,
+  `Equal`, or `White mates in 4`.
+- The square a move landed on is tinted with the move's label colour: red for a
+  blunder, orange for a mistake, yellow for an inaccuracy, cyan for good, and
+  green for excellent or best. The move's starting square keeps the normal
+  last-move highlight.
+- The move list shows one line per pair, for example `1. e4 ★  e5 ?!`, with
+  each move and its label symbol coloured by classification. The move being
+  reviewed is highlighted, and clicking any move jumps straight to the position
+  after it.
+- The classification of the move being reviewed appears in the side panel as a
+  large three-row block-letter banner in the label's colour. Terminals cannot
+  change the font size of one line, so the label is drawn three rows tall
+  instead.
+- Under the move list, a totals block adds up every Best, Excellent, Good,
+  Inaccuracy, Mistake, Blunder and Unknown label as the analysis runs.
+- The panel shows the exact signed eval from White's point of view (`+0.35`,
+  `-1.20`, `+M5`, `-M3`) alongside the plain-language advantage.
+- Each move is labelled by comparing the engine's evaluation before and after
+  the move with the same engine settings:
+
+| Label | Meaning |
+| --- | --- |
+| ★ Best | The engine's top move was played. |
+| ! Excellent | At most 0.25 pawns lost. |
+| ✓ Good | At most 0.50 pawns lost. |
+| ?! Inaccuracy | At most 1.00 pawn lost. |
+| ? Mistake | At most 2.00 pawns lost. |
+| ?? Blunder | More than 2.00 pawns lost. |
+
+  Forced mate overrides the pawn bands: keeping or finding a forced mate is
+  best, while allowing a forced mate against you or throwing one away is a
+  blunder. A position the engine could not evaluate is marked `Unknown` rather
+  than guessed.
+
+Openings are not labelled as book moves, and the labels are deliberately
+limited to what the engine's evaluations can prove; there are no Brilliant or
+Great labels.
+
+Press `e` to save the structured analysis as JSON in
+`~/.local/share/hyprchess/`. The report is meant for tooling and for a future
+local coach; it is not shown in the UI. It has a versioned schema
+(`schema_version` 2), explicit perspective and unit conventions, game headers,
+the engine's own UCI identification and the settings actually used, every
+evaluated position (FEN, score, depth, selective depth, nodes, time, best move
+and PV), every played move (UCI and SAN, FENs, classification, mover-relative
+centipawn loss, eval before/after, engine best move and the reply PV), plus
+summary counts, the biggest centipawn loss and the biggest mate error. Forced
+mates are exported explicitly: mover-relative mate distances in moves, a
+transition such as `allowed`, `missed` or `delivered_checkmate`, and flags for
+allowing or missing a forced mate. The file is written even if analysis is
+incomplete, with `"complete": false`.
+
+The review board starts from the side the local player had. Saved hyprchess
+games record that side as `You`; imported PGNs are matched against your Linux
+login name, including common handle variants such as `pixelgabe1` for login
+`pixelgabe`. Games with no recognisable local side default to White, and `f`
+flips the board at any time.
+
+### Coaching with the structured export
+
+The JSON export is meant to be handed to a local LLM coach (Ollama and friends
+are not integrated yet) to get concrete improvement advice. Because the export
+records the perspective and units, the inclusive classification thresholds, and
+the mate transitions, a coach prompt can ask for targeted work, for example:
+
+> "Here is the structured analysis of my game: which of my moves lost the most
+> accuracy, and where should I practise keeping or finding forced mates?"
+
+The machine-readable fields (`summary.biggest_loss`, `summary.biggest_mate_error`,
+`loss_kind`, `classification_basis`, `mate`, `conventions`) let a coach reason
+about what to drill next instead of reading prose. The file stays in
+`~/.local/share/hyprchess/` as the source of truth for the coach.
+
+Every field, unit, threshold and mate transition is documented in
+[docs/analysis-schema.md](docs/analysis-schema.md), and a verified example is
+in [docs/sample-analysis.json](docs/sample-analysis.json).
+
 ### When the game ends
 
 <p align="center">
@@ -236,12 +342,16 @@ while looking at an earlier position.
 Checkmate, stalemate, draws by repetition, the fifty-move rule or insufficient
 material, resignation (`x`) and running out of time all end the game with a
 dialog: play again, look at the final board, save it, or go back to the menu.
+After a checkmate the dialog names the winner and loser (for example
+**Checkmate — White wins** and "Black is checkmated"), and the checkmated king's
+square is shown in red on the final board.
 
 ### Saving and resuming
 
 - `s` saves the game as a PGN file in `~/.local/share/hyprchess/`, with the
   players, date, time control and result. Any chess program can open it.
-- **Open a saved game** on the title screen replays one of those files.
+- **Review a game** on the title screen opens a saved game or a PGN file you
+  browse to, in the read-only review screen.
 - Games against Stockfish and two-player games are saved after every move.
   Quit with `q` or go back with `b` whenever you like, then choose **Resume
   last game**. Clocks are restored too.
@@ -340,6 +450,7 @@ Optional extras:
 cursor = "#e8c84a"
 selected = "#6fa86f"
 check = "#c0504d"
+checkmate = "#ff3b30"
 hint = "#b07ad9"
 label = "#8a8a8a"
 last_light = "#cdc26a"
@@ -381,12 +492,14 @@ built-in one replaces it.
 | `u` / `r` | undo / redo |
 | `,` / `.` / `Home` / `End` | step through earlier positions |
 | `i` | hint from the engine |
+| `a` / `e` | review: start or stop analysis / export the analysis as JSON |
 | `[` / `]` | easier / harder |
 | `f` | flip the board |
 | `c` | next skin |
 | `t` | show or hide the side panel |
 | `s` | save the game as PGN |
 | `x` | resign |
+| `m` | sound on or off |
 | `b` | back to the menu (the game is kept for Resume) |
 | `?` | help |
 | `q` | quit |

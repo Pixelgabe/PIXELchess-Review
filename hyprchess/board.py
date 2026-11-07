@@ -62,7 +62,9 @@ class BoardView(Widget):
         if sq in g.hint:
             return skin.hint
         if g.shown.is_check() and sq == g.shown.king(g.shown.turn):
-            return skin.check
+            return skin.checkmate if g.shown.is_checkmate() else skin.check
+        if sq == getattr(g, "move_highlight", None) and getattr(g, "move_highlight_color", ""):
+            return g.move_highlight_color
         if g.shown.move_stack and sq in (g.shown.peek().from_square, g.shown.peek().to_square):
             return skin.last[light]
         return skin.square[light]

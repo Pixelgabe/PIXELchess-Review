@@ -3,6 +3,8 @@
 from datetime import datetime
 from time import monotonic
 
+import asyncio
+
 import chess
 import chess.engine
 from rich.text import Text
@@ -13,8 +15,10 @@ from textual.containers import Container
 from textual.screen import Screen
 from textual.widgets import Footer, Static
 
+from . import animation, sound
+from .animation import MOVE_ANIMATION_DELAY, animation_segments, frame_board, move_path
 from .board import TIERS, BoardView, board_size, fit
-from .game import PRESETS, Game, format_clock
+from .game import PRESETS, Game, format_clock, result_winner
 from .screens import HelpScreen, MenuScreen
 
 PANEL_W = 28
@@ -46,6 +50,7 @@ class GameScreen(Screen):
         Binding("t", "toggle_panel", "Panel"),
         Binding("s", "save", "Save"),
         Binding("x", "resign", "Resign"),
+        Binding("m", "sound", "Sound"),
         Binding("b", "back", "Menu"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit_game", "Quit"),
@@ -67,6 +72,7 @@ class GameScreen(Screen):
         self.hint: set[int] = set()
         self.view: int | None = 0 if mode == "viewer" else None  # ply being reviewed, None = live
         self.shown = game.board  # position on screen: live board, or an earlier one in review
+        self.anim_board: chess.Board | None = None  # live board while a move animation is running
         self.thinking = False
         self.show_panel = True
         self.stacked = False
@@ -176,7 +182,8 @@ class GameScreen(Screen):
     def _refresh(self) -> None:
         game = self.game
         sans, lost = game.history()
-        self.shown = game.board if self.view is None else game.at(self.view)
+        shown = self.anim_board if self.anim_board is not None and self.view is None else game.board
+        self.shown = shown if self.view is None else game.at(self.view)
         material = Game.material(game.board)
         cur = (len(sans) if self.view is None else self.view) - 1  # ply that led to the shown position
         rows = []
@@ -253,18 +260,33 @@ class GameScreen(Screen):
     @work
     async def announce(self, outcome: tuple[str, str]) -> None:
         result, reason = outcome
+        winner = result_winner(result)
+        checkmate = self.game.board.is_checkmate()
         if result == "1/2-1/2":
-            title = "Draw"
+            title, body = "Draw", f"{result}  {reason}"
         elif result == "*":
-            title = "Game abandoned"
+            title, body = "Game abandoned", f"{result}  {reason}"
+        elif checkmate:
+            loser = not winner
+            winner_name, loser_name = self.names[winner], self.names[loser]
+            if self.mode == "local":
+                title = f"Checkmate — {winner_name} wins"
+            else:
+                title = "Checkmate — You win" if winner == self.human else "Checkmate — You lose"
+            if loser_name == "You":
+                body = f"You are checkmated. {winner_name} wins.\n{result}  ·  {reason}"
+            else:
+                body = f"{loser_name} is checkmated. {winner_name} wins.\n{result}  ·  {reason}"
         elif self.mode == "local":
             title = "White wins" if result == "1-0" else "Black wins"
+            body = f"{result}  {reason}"
         else:
-            title = "You win" if (result == "1-0") == (self.human == chess.WHITE) else "You lose"
+            title = "You win" if winner == self.human else "You lose"
+            body = f"{result}  {reason}"
         options = [("review", "Look at the board"), ("save", "Save PGN"), ("menu", "Main menu")]
         if self.mode != "online":
             options.insert(0, ("rematch", "Play again"))
-        choice = await self.app.push_screen_wait(MenuScreen(title, options, body=f"{result}  {reason}"))
+        choice = await self.app.push_screen_wait(MenuScreen(title, options, body=body))
         if choice == "save":
             self.action_save()
         elif choice == "menu":
@@ -317,14 +339,66 @@ class GameScreen(Screen):
         if choice and self.can_move:
             self.play(chess.Move(origin, target, chess.Piece.from_symbol(choice).piece_type))
 
+    def _animation_segments(self, move: chess.Move, before: chess.Board) -> list[tuple]:
+        """Moving pieces for an animation: the played move, plus the rook in a castle."""
+        return animation.animation_segments(move, before)
+
+    def _after_move(self, move: chess.Move, before: chess.Board) -> None:
+        """After any move has been pushed: play the move sound and start a short animation."""
+        after = self.game.board
+        if after.is_checkmate():
+            kind = "mate"
+        elif before.is_capture(move):
+            kind = "capture"
+        elif after.is_check():
+            kind = "check"
+        else:
+            kind = "move"
+        if bool(self.app.config.get("sound", True)):
+            sound.play_sound(kind)
+        if self.mode == "viewer" or self.view is not None or not self.is_attached or not bool(self.app.config.get("animation", True)):
+            return
+        segments = self._animation_segments(move, before)
+        if not segments:
+            return
+        self.anim_board = frame_board(self.game.board, segments, 0)
+        self._animate_move(move, before)
+
+    @work(exclusive=True, group="move-animation")
+    async def _animate_move(self, move: chess.Move, before: chess.Board) -> None:
+        """Hop a short animation through intermediate squares, then hand back to the real board."""
+        segments = animation.animation_segments(move, before)
+        after = self.game.board.copy(stack=False)
+        steps = max(len(segment[3]) for segment in segments) if segments else 1
+        for index in range(steps):
+            if not self.is_attached or self.view is not None:
+                self.anim_board = None
+                return
+            self.anim_board = after if index == steps - 1 else frame_board(after, segments, index)
+            if not self.is_attached:
+                return
+            self.query_one(BoardView).refresh()
+            await asyncio.sleep(MOVE_ANIMATION_DELAY)
+        if not self.is_attached or self.view is not None:
+            self.anim_board = None
+            return
+        self.anim_board = None
+        self._refresh()
+
+    def _frame_board(self, after: chess.Board, segments: list[tuple], index: int) -> chess.Board:
+        """A copy of *after* with the moving pieces drawn at the interpolated square."""
+        return animation.frame_board(after, segments, index)
+
     def play(self, move: chess.Move) -> None:
         """Make a move for this keyboard, then hand over to the engine or the network."""
+        before = self.game.board.copy(stack=False)
         self.game.push(move)
         self.hint = set()
         self._select(None)
         if self.mode == "online":
             clock = self.game.clock
             self.send(t="move", uci=move.uci(), clock=[clock[chess.WHITE], clock[chess.BLACK]] if clock else None)
+        self._after_move(move, before)
         self._changed()
         self.engine_move()
 
@@ -349,8 +423,10 @@ class GameScreen(Screen):
         try:
             result = await engine.play(game.board.copy(), chess.engine.Limit(**limit), options=options)
             if not game.outcome() and len(game.board.move_stack) == plies:
+                before = game.board.copy(stack=False)
                 game.push(result.move)
                 self.hint = set()
+                self._after_move(result.move, before)
         except chess.engine.EngineError as e:
             self.app.engine = None
             self.notify(f"{self.app.engine_name} stopped: {e}", severity="error")
@@ -406,6 +482,7 @@ class GameScreen(Screen):
                     game.end("*", "opponent sent an illegal move")
                     self.peer.close()
                 else:
+                    before = game.board.copy(stack=False)
                     game.push(move)
                     self.hint = set()
                     clock = msg.get("clock")
@@ -413,6 +490,7 @@ class GameScreen(Screen):
                         reported = clock[0 if them == chess.WHITE else 1]
                         if isinstance(reported, (int, float)) and 0 <= reported <= game.clock[them] + 1:
                             game.clock[them] = float(reported)
+                    self._after_move(move, before)
             self._changed()
         self.connected = False
         game.end("*", "opponent disconnected")
@@ -430,6 +508,7 @@ class GameScreen(Screen):
             return
         self.view, self.hint, self.finished = None, set(), False
         self.game.ended = None
+        self.anim_board = None
         self.game.undo(2 if self.mode == "engine" else 1)
         self._select(None)
         self._changed()
@@ -439,6 +518,7 @@ class GameScreen(Screen):
         if self.thinking or not self.game.redo_one():
             return
         self.view = None
+        self.anim_board = None
         self._select(None)
         self._changed()
 
@@ -458,6 +538,13 @@ class GameScreen(Screen):
         self.app.cycle_skin(1)
         self.notify(f"Skin: {self.app.skin.name}", timeout=2)
         self._refresh()
+
+    def action_sound(self) -> None:
+        """Mute or unmute the retro move sounds."""
+        enabled = not bool(self.app.config.get("sound", True))
+        self.app.config["sound"] = enabled
+        self.app.save_config()
+        self.notify(f"Sound: {'on' if enabled else 'off'}", timeout=3)
 
     def action_toggle_panel(self) -> None:
         self.show_panel = not self.show_panel

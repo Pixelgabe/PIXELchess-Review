@@ -47,6 +47,7 @@ class Skin:
     cursor: str
     selected: str
     check: str
+    checkmate: str
     hint: str
     label: str
     pieces: dict[bool, dict[str, str]]  # colour -> {"X": body, "o": detail}
@@ -100,6 +101,7 @@ def build_skin(data: dict, fallback_name: str) -> Skin:
         cursor=_colour(board, "cursor", "#e8c84a"),
         selected=_colour(board, "selected", "#6fa86f"),
         check=_colour(board, "check", "#c0504d"),
+        checkmate=_colour(board, "checkmate", "#ff3b30"),
         hint=_colour(board, "hint", "#b07ad9"),
         label=_colour(board, "label", "#8a8a8a"),
         pieces={

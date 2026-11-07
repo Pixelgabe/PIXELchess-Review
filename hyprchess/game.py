@@ -3,11 +3,21 @@
 import io
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 import chess
 import chess.pgn
 
 VALUE = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
+
+
+def result_winner(result: str) -> chess.Color | None:
+    """The winning colour for a PGN result, or None for a draw or unfinished game."""
+    if result == "1-0":
+        return chess.WHITE
+    if result == "0-1":
+        return chess.BLACK
+    return None
 
 
 @dataclass(frozen=True)
@@ -54,6 +64,26 @@ def format_clock(seconds: float) -> str:
     seconds = int(seconds)
     hours, rest = divmod(seconds, 3600)
     return f"{hours}:{rest // 60:02}:{rest % 60:02}" if hours else f"{rest // 60}:{rest % 60:02}"
+
+
+def _parse_pgn_game(parsed: chess.pgn.Game) -> Optional[tuple]:
+    """Convert a parsed PGN Game node into (Game, headers), or None if it cannot be loaded.
+
+    Returns None when the game does not start from the standard position,
+    has parser errors, or has no legal mainline moves.
+    """
+    if parsed is None or parsed.errors:
+        return None
+    if parsed.board().fen() != chess.STARTING_FEN:
+        return None  # non-standard starting position
+    game = Game()  # the hyprchess Game class
+    for move in parsed.mainline_moves():
+        game.board.push(move)
+    # If the game has no result header but the position is terminal, infer from outcome
+    headers = dict(parsed.headers)
+    if not game.board.outcome(claim_draw=True) and headers.get("Result") in ("1-0", "0-1", "1/2-1/2"):
+        game.ended = (headers["Result"], headers.get("Termination", "game over"))
+    return game, headers
 
 
 class Game:
@@ -157,14 +187,62 @@ class Game:
 
     @classmethod
     def from_pgn(cls, text: str) -> tuple["Game", dict[str, str]]:
-        """First game of a PGN text and its headers. Raises ValueError if it has no legal mainline."""
+        """First game of a PGN text and its headers. Raises ValueError if it has no legal mainline.
+
+        This method keeps its original strict behaviour: it only loads a game that starts
+        from the standard position, has no parser errors, and contains a legal mainline.
+        """
         parsed = chess.pgn.read_game(io.StringIO(text))
-        if parsed is None or parsed.errors or parsed.board().fen() != chess.STARTING_FEN:
+        result = _parse_pgn_game(parsed)
+        if result is None:
             raise ValueError("not a standard game from the starting position")
-        game = cls()
-        for move in parsed.mainline_moves():
-            game.board.push(move)
-        headers = dict(parsed.headers)
-        if not game.board.outcome(claim_draw=True) and headers.get("Result") in ("1-0", "0-1", "1/2-1/2"):
-            game.ended = (headers["Result"], headers.get("Termination", "game over"))
-        return game, headers
+        return result
+
+    @classmethod
+    def games_from_pgn(cls, text: str) -> tuple[list[tuple["Game", dict[str, str]]], list[str]]:
+        """Parse some or all PGN games from *text* and return (games, notes).
+
+        Returns
+        -------
+        games : list[tuple[Game, dict]]
+            Each tuple is (game, headers) for a successfully loaded game.
+        notes : list[str]
+            Human-readable notes for games that could not be loaded.
+            Each entry has the form ``"Game N: <reason>"``.
+            If every game loaded successfully, *notes* is an empty list.
+
+        behaviour
+        ---------
+        * Loops ``chess.pgn.read_game()`` until ``None`` is returned, so multi-game PGN
+          files are fully supported.
+        * A game that does not start from the standard position, has parser errors, or
+          contains no legal mainline moves is **not** loaded; instead a note is recorded.
+        * Games with recoverable positions after the first move are still loaded; only
+          the initial-position check rejects them.
+        * The PGN text is read with UTF-8-BOM tolerance (via ``utf-8-sig``) and falls
+          back to ``latin-1`` if decoding fails.
+        """
+        games: list[tuple["Game", dict[str, str]]] = []
+        notes: list[str] = []
+
+        # Read the PGN text with encoding tolerance
+        try:
+            pgn_text = text.encode("utf-8-sig").decode("utf-8-sig")
+        except Exception:
+            pgn_text = text.encode("latin-1").decode("latin-1")
+
+        handle = io.StringIO(pgn_text)
+
+        index = 1
+        parsed = chess.pgn.read_game(handle)
+        while parsed is not None:
+            result = _parse_pgn_game(parsed)
+            if result is not None:
+                game, headers = result
+                games.append((game, headers))
+            else:
+                notes.append(f"Game {index}: could not load (non-standard start, parser errors, or no mainline)")
+            index += 1
+            parsed = chess.pgn.read_game(handle)
+
+        return games, notes
