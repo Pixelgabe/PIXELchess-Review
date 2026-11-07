@@ -1,4 +1,4 @@
-<h1 align="center">hyprchess</h1>
+<h1 align="center">PIXELchess</h1>
 
 <p align="center">
   <b>Chess in your terminal, on Linux, macOS and Windows.</b><br>

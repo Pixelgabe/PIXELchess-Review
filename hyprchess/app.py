@@ -48,7 +48,7 @@ def find_engines(first: list[str | None], folder: Path) -> dict[str, str]:
 
 
 class ChessApp(App):
-    TITLE = "hyprchess"
+    TITLE = "PIXELchess"
     ENABLE_COMMAND_PALETTE = False  # keeps the footer for game keys
 
     def __init__(self, engine_path: str | None = None, skin: str | None = None) -> None:

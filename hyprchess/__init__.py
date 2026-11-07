@@ -1,3 +1,3 @@
-"""hyprchess: chess in your terminal."""
+"""PIXELchess: chess in your terminal."""
 
 __version__ = "0.2.0"
