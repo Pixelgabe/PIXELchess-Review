@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/title.gif" alt="The hyprchess title screen: pixel chess pieces above a menu being navigated" width="640">
+  <img src="docs/title.gif" alt="The PIXELchess title screen: pixel chess pieces above a menu being navigated" width="640">
 </p>
 
 <p align="center">
@@ -18,6 +18,7 @@
   <a href="#clocks">Clocks</a> ·
   <a href="#online-play">Online</a> ·
   <a href="#skins">Skins</a> ·
+  <a href="#coaching-with-the-structured-export">Coaching</a> ·
   <a href="#keys">Keys</a>
 </p>
 
@@ -29,7 +30,7 @@
 
 ### Any terminal: Linux, macOS, Windows
 
-hyprchess is a Python package. Pick whichever of these you already have:
+PIXELchess is a Python package. Pick whichever of these you already have:
 
 ```
 uvx hyprchess              # run it without installing (uv)
@@ -82,7 +83,7 @@ git clone https://github.com/namelesstherebel/hyprchess && cd hyprchess
 ```
 
 That installs the `hyprchess` command with `uv tool install` and adds
-**hyprchess** to the app launcher (SUPER + SPACE) with its icon. Launching it
+**PIXELchess** to the app launcher (SUPER + SPACE) with its icon. Launching it
 again focuses the game that is already running. Run `./install.sh` again after
 `git pull` to update. Remove it with:
 
@@ -97,7 +98,7 @@ again focuses the game that is already running. Run `./install.sh` again after
   [python-chess](https://github.com/niklasf/python-chess), pinned in `uv.lock`.
   On Omarchy: `mise use -g uv`.
 - **A chess engine** is optional and only needed to play against the computer
-  or get hints. hyprchess does not install one; see [Engines](#engines).
+  or get hints. PIXELchess does not install one; see [Engines](#engines).
 - **Network**: besides that first dependency download, the game only opens a
   connection when you choose an online game.
 - **Files it writes**: `~/.config/hyprchess/` (settings, your skins),
@@ -108,7 +109,7 @@ again focuses the game that is already running. Run `./install.sh` again after
 
 ## Engines
 
-hyprchess plays against any [UCI](https://www.chessprogramming.org/UCI) engine
+PIXELchess plays against any [UCI](https://www.chessprogramming.org/UCI) engine
 and offers every one it finds under **Opponent** in the setup form.
 
 - **On your PATH.** These are found by name: `stockfish`, `lc0` (Leela Chess
@@ -141,7 +142,7 @@ and press Enter.
 | **Online: host a game** | Wait for a friend to connect to you. |
 | **Online: join a game** | Connect to a friend who is hosting. |
 | **Resume last game** | Carry on the unfinished game against the engine or a local opponent. |
-| **Review a game** | Open a saved game or a PGN file, step through it, and analyse it with the engine. |
+| **Review a game** | Open a saved game or a PGN file, step through it, analyse it with the engine and export the analysis as JSON. |
 | **Skin** | Left and right change the look of the board and pieces. |
 
 ### Setting up a game
@@ -194,8 +195,8 @@ remembered for next time.
   red than an ordinary check.
 - **Animation.** A move briefly hops the moving piece through its intermediate
   squares before the board redraws, so a fast move is easier to follow. The
-  animation is short (a few frames) and only happens in live play, not while
-  stepping through a game.
+  animation is short (a few frames) and runs in live play and while stepping
+  through a reviewed game; it does not run while the engine is thinking.
 - **Promotion.** A pawn reaching the last rank asks what it should become.
 
 <p align="center">
@@ -295,8 +296,10 @@ limited to what the engine's evaluations can prove; there are no Brilliant or
 Great labels.
 
 Press `e` to save the structured analysis as JSON in
-`~/.local/share/hyprchess/`. The report is meant for tooling and for a future
-local coach; it is not shown in the UI. It has a versioned schema
+`~/.local/share/hyprchess/`. The report is meant for tooling and for the local
+LLM coach described below; it is not shown in the UI. Each export is written as
+`analysis-<slug>-<stamp>.json` in that folder, where `<stamp>` is
+`YYYYmmdd-HHMMSS`. It has a versioned schema
 (`schema_version` 2), explicit perspective and unit conventions, game headers,
 the engine's own UCI identification and the settings actually used, every
 evaluated position (FEN, score, depth, selective depth, nodes, time, best move
@@ -308,7 +311,7 @@ transition such as `allowed`, `missed` or `delivered_checkmate`, and flags for
 allowing or missing a forced mate. The file is written even if analysis is
 incomplete, with `"complete": false`.
 
-The review board starts from the side the local player had. Saved hyprchess
+The review board starts from the side the local player had. Saved PIXELchess
 games record that side as `You`; imported PGNs are matched against your Linux
 login name, including common handle variants such as `pixelgabe1` for login
 `pixelgabe`. Games with no recognisable local side default to White, and `f`
@@ -538,7 +541,7 @@ between two instances and, when Stockfish is installed, a game against it.
 
 ## License
 
-GPL-3.0-or-later. hyprchess uses [python-chess](https://github.com/niklasf/python-chess)
+GPL-3.0-or-later. PIXELchess uses [python-chess](https://github.com/niklasf/python-chess)
 (GPL-3.0) for the rules and talks to Stockfish as a separate program.
 
 Inspired by [chess-tui](https://github.com/thomas-mauran/chess-tui).
